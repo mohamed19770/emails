@@ -1,0 +1,14 @@
+[
+  "valid@gmail.com",
+  "noone@yahoo.com",
+  "user@example.com",
+  "fake@mailinator.com",
+  "admin@corp.com",
+  "abc@test-catchall.com",
+  "slow@corp.com",
+  "bad@bad-domain.test",
+  "BadFormat",
+  "Another.BadFormat@",
+  "duplicate@gmail.com",
+  "duplicate@gmail.com"
+]

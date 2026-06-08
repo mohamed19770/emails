@@ -1,0 +1,33 @@
+{
+  "name": "email-checker",
+  "version": "1.0.0",
+  "description": "Production-ready email validation and file sharing monorepo",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "build": "npm run build:frontend",
+    "build:frontend": "cd frontend && npm run build",
+    "start": "cd backend && npm start",
+    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install",
+    "clean": "node scripts/clean-cache.mjs",
+    "clean:deep": "node scripts/clean-cache.mjs --deep",
+    "clean:dry": "node scripts/clean-cache.mjs --dry-run",
+    "reinstall": "npm run clean:deep && npm ci --legacy-peer-deps && cd frontend && npm ci --legacy-peer-deps && cd .. && cd backend && npm ci --legacy-peer-deps && cd ..",
+    "verify": "node scripts/verify-env.mjs"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "rimraf": "^6.0.0",
+    "execa": "^9.2.0",
+    "kleur": "^4.1.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": ["email", "validation", "file-sharing", "monorepo"],
+  "author": "",
+  "license": "MIT"
+}
+

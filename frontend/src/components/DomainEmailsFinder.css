@@ -1,0 +1,160 @@
+.domain-emails-finder {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 10px 0;
+}
+
+.domain-emails-finder.embedded {
+  padding: 0;
+  gap: 1.5rem;
+}
+
+.domain-emails-finder.embedded .def-progress {
+  padding: 1rem 1.25rem;
+  background: var(--glass-subtle, rgba(255, 255, 255, 0.06));
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.domain-emails-finder.embedded .def-results {
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.def-config h3 {
+  margin: 0 0 8px;
+  color: #fff;
+}
+
+.def-description {
+  margin: 0 0 20px;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 14px;
+}
+
+.def-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.def-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 768px) {
+  .def-options {
+    grid-template-columns: 1fr;
+  }
+}
+
+.def-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.def-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.def-progress {
+  padding: 16px 20px;
+}
+
+.def-progress p {
+  margin: 4px 0;
+  color: #fff;
+}
+
+.def-current-page {
+  font-size: 12px;
+  opacity: 0.8;
+  word-break: break-all;
+}
+
+.def-results-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.def-results-header h3 {
+  margin: 0;
+  color: #fff;
+}
+
+.def-results-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.def-filter {
+  min-width: 180px;
+}
+
+.def-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.def-table th,
+.def-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.def-table th {
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.def-table a {
+  color: #7dd3fc;
+  word-break: break-all;
+}
+
+.def-email {
+  font-family: monospace;
+  font-weight: 500;
+}
+
+.def-snippet {
+  max-width: 280px;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.table-responsive {
+  overflow-x: auto;
+}
+
+.chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+}
+
+.chip-success {
+  background: rgba(34, 197, 94, 0.3);
+  color: #86efac;
+}
+
+.chip-info {
+  background: rgba(59, 130, 246, 0.3);
+  color: #93c5fd;
+}
