@@ -4,10 +4,15 @@ const TIMEOUT_MS = 15000;
 const DELAY_MS = 800;
 
 const EXCLUDED_DOMAINS = [
-  'linkedin.com', 'bayt.com', 'gulftalent.com', 'indeed.com',
+  'linkedin.com', 'bayt.com', 'bayut.sa', 'bayut.com', 'propertyfinder',
+  'gulftalent.com', 'indeed.com',
   'wuzzuf.net', 'jooble.org', 'glassdoor.com', 'monster.com',
   'facebook.com', 'twitter.com', 'youtube.com', 'instagram.com',
-  'bing.com', 'microsoft.com'
+  'bing.com', 'microsoft.com', 'wikipedia.org', 'britannica.com',
+  'cambridge.org', 'merriam-webster.com', 'dictionary.com',
+  'quora.com', 'reddit.com', 'pinterest.com', 'tiktok.com',
+  'softexpert.com', 'autodesk.com', 'design-encyclopedia.com',
+  'construction21.org', 'ilo.org', 'constructionreviewonline.com'
 ];
 
 function unwrapBingUrl(href) {

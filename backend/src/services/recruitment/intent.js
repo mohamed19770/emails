@@ -82,8 +82,11 @@ export function isRecruitmentPage({ text, url, title, meta }) {
     matchedKeywords.push('HR Contact');
   }
   
-  // URL with recruitment path counts as match even with low text score
-  const matched = confidence >= 25 || urlMatch;
+  const strongKeywords = enMatches.filter(k =>
+    ['recruitment', 'hiring', 'careers', 'vacancies', 'jobs', 'whatsapp cv', 'توظيف', 'وظائف'].includes(k.toLowerCase()) || k === 'WhatsApp CV'
+  );
+
+  const matched = urlMatch || (confidence >= 40 && strongKeywords.length >= 1) || strongKeywords.length >= 2;
   
   return {
     matched,

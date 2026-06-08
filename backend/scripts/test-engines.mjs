@@ -1,7 +1,7 @@
 import { runDuckDuckGo } from '../src/services/recruitment/engines/ddg.js';
 import { runBingSearch } from '../src/services/recruitment/engines/bing.js';
 
-const q = 'construction recruitment careers jobs whatsapp contact Saudi Arabia';
+const q = 'construction careers jobs recruitment hiring contact whatsapp HR Saudi Arabia KSA site:.sa';
 
 try {
   const ddg = await runDuckDuckGo({ query: q }, 1);

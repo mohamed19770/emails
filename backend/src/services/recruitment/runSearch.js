@@ -6,15 +6,38 @@ import { runDuckDuckGo } from './engines/ddg.js';
 import { runBingSearch } from './engines/bing.js';
 import { extractRecruitmentPhones } from '../phones/recruitmentExtract.js';
 import { isLikelyFakePhone } from '../phones/phoneValidation.js';
+import { shouldIncludeWhatsAppResult } from '../phones/whatsappVerify.js';
 import logger from '../../config/logger.js';
 
 const GLOBAL_CONCURRENCY = 3;
 const TIMEOUT_MS = 15000;
 const BACKOFF_BASE_MS = 2000;
 const PAGE_DELAY_MS = 400;
+const MAX_PATHS_PER_DOMAIN = 5;
 
-const RECRUITMENT_QUERY_TEMPLATE = (keyword, country) =>
-  `${keyword} recruitment careers jobs whatsapp contact ${country}`;
+const CAREER_PATHS = [
+  '/careers', '/jobs', '/career', '/join-us', '/contact', '/contact-us',
+  '/en/careers', '/ar/careers', '/recruitment', '/employment', '/vacancies'
+];
+
+const LISTICLE_DOMAINS = [
+  'lifeinsaudiarabia.net', 'ksaexpats.com', 'expatriates.com', 'quora.com'
+];
+
+const COUNTRY_HINTS = {
+  'Saudi Arabia': 'Saudi Arabia KSA',
+  'United Arab Emirates': 'UAE Dubai',
+  'Qatar': 'Qatar Doha',
+  'Kuwait': 'Kuwait',
+  'Bahrain': 'Bahrain',
+  'Oman': 'Oman',
+  'Egypt': 'Egypt'
+};
+
+const RECRUITMENT_QUERY_TEMPLATE = (keyword, country) => {
+  const hint = COUNTRY_HINTS[country] || country;
+  return `${keyword} company careers jobs recruitment hiring contact phone whatsapp ${hint}`;
+};
 
 /**
  * Run recruitment-focused phone search
@@ -148,6 +171,135 @@ async function fetchPageContent(url) {
   return response.text();
 }
 
+function prioritizeResults(searchResults, country) {
+  if (country === 'Saudi Arabia') {
+    const saResults = searchResults.filter(r => /\.sa(\/|$)/i.test(r.url));
+    const pool = saResults.length > 0 ? saResults : searchResults.filter(r =>
+      /saudi|ksa|riyadh|jeddah|dammam/i.test(`${r.url} ${r.title} ${r.snippet}`)
+    );
+    return [...(pool.length > 0 ? pool : searchResults)].sort((a, b) => {
+      const score = (url) => (url.includes('.sa') ? 2 : 0) + (/\/careers|\/jobs|\/recruitment|\/contact/i.test(url) ? 1 : 0);
+      return score(b.url) - score(a.url);
+    });
+  }
+  return searchResults;
+}
+
+function expandDomainUrls(baseUrl) {
+  const urls = [];
+  try {
+    const origin = new URL(baseUrl).origin;
+    urls.push(baseUrl);
+    for (const path of CAREER_PATHS) {
+      if (urls.length >= MAX_PATHS_PER_DOMAIN) break;
+      const candidate = `${origin}${path}`;
+      if (!urls.includes(candidate)) urls.push(candidate);
+    }
+  } catch {
+    urls.push(baseUrl);
+  }
+  return urls;
+}
+
+function extractSaLinksFromHtml(html, baseOrigin) {
+  const links = new Set();
+  const hrefRegex = /href=["']([^"']+)["']/gi;
+  let match;
+  while ((match = hrefRegex.exec(html)) !== null) {
+    try {
+      const resolved = new URL(match[1], baseOrigin).href;
+      if (resolved.includes('.sa') && !LISTICLE_DOMAINS.some(d => resolved.includes(d))) {
+        links.add(resolved);
+      }
+    } catch {
+      // skip
+    }
+  }
+  return [...links].slice(0, 8);
+}
+
+async function visitAndExtract(url, domain, query, results, run, options) {
+  const { recruitmentOnly, carrierAware, phones, seenPairs } = options;
+
+  sendTraceEvent(run, {
+    scope: 'visit',
+    engine: query.engine,
+    country: query.country,
+    url,
+    status: 'started',
+    durationMs: 0,
+    note: `Visiting ${url}`
+  });
+
+  const html = await fetchPageContent(url);
+  const extractionResults = extractRecruitmentPhones(html, url, {
+    country: query.country,
+    recruitmentOnly,
+    carrierAware,
+    maxPhonesPerDomain: phones.perDomainCaps?.phones || 10,
+    maxWhatsAppPerDomain: phones.perDomainCaps?.whatsapp || 10
+  });
+
+  let found = 0;
+
+  for (const phone of extractionResults.phones) {
+    if (isLikelyFakePhone(phone.e164, phone.local)) continue;
+
+    const pairKey = `${phone.e164}|${phone.companyName || domain}`;
+    if (!seenPairs.has(pairKey)) {
+      seenPairs.add(pairKey);
+      const item = { resultType: 'phone', ...phone, fetchedAt: new Date().toISOString() };
+      results.phones.push(item);
+      results.companies.add(phone.companyName || domain);
+      results.domains.add(domain);
+      sendResultEvent(run, item);
+      found++;
+    }
+  }
+
+  for (const wa of extractionResults.whatsapp) {
+    if (isLikelyFakePhone(wa.e164, wa.local)) continue;
+
+    const { include, check } = await shouldIncludeWhatsAppResult(wa.e164);
+    if (!include) {
+      logger.info(`[WHATSAPP-VERIFY] Rejected ${wa.e164}: ${check.reason || 'not_on_whatsapp'}`);
+      continue;
+    }
+
+    const pairKey = `${wa.e164}|${wa.companyName || domain}`;
+    if (!seenPairs.has(pairKey)) {
+      seenPairs.add(pairKey);
+      const item = {
+        resultType: 'whatsapp',
+        ...wa,
+        whatsappVerified: check.verified && check.exists === true,
+        verificationProvider: check.provider,
+        waLink: wa.waLink || `https://wa.me/${wa.e164.replace(/\D/g, '')}`,
+        fetchedAt: new Date().toISOString()
+      };
+      results.whatsapp.push(item);
+      results.companies.add(wa.companyName || domain);
+      results.domains.add(domain);
+      sendResultEvent(run, item);
+      found++;
+    }
+  }
+
+  results.pagesVisited++;
+
+  sendTraceEvent(run, {
+    scope: 'visit',
+    engine: query.engine,
+    country: query.country,
+    url,
+    status: 'completed',
+    durationMs: 0,
+    note: `Found ${extractionResults.phones.length} phones, ${extractionResults.whatsapp.length} WhatsApp`
+  });
+
+  return { found, html };
+}
+
 async function processQuery(query, results, run, options) {
   const { recruitmentOnly, carrierAware, phones, seenPairs, backoffDomains } = options;
 
@@ -169,7 +321,9 @@ async function processQuery(query, results, run, options) {
       }
     }
 
-    for (const result of searchResults) {
+    const visitedDomains = new Set();
+
+    for (const result of prioritizeResults(searchResults, query.country)) {
       if (run.status === 'stopped') break;
 
       let domain;
@@ -179,91 +333,73 @@ async function processQuery(query, results, run, options) {
         continue;
       }
 
+      if (visitedDomains.has(domain)) continue;
+
       const backoffUntil = backoffDomains.get(domain);
       if (backoffUntil && Date.now() < backoffUntil) {
         results.backoffs++;
         continue;
       }
 
+      visitedDomains.add(domain);
+
+      const isListicle = LISTICLE_DOMAINS.some(d => domain.includes(d))
+        || /top-\d+|best-\d+|list-of|companies-in|construction-companies/i.test(result.url);
+
       try {
-        sendTraceEvent(run, {
-          scope: 'visit',
-          engine: query.engine,
-          country: query.country,
-          url: result.url,
-          status: 'started',
-          durationMs: 0,
-          note: `Visiting ${result.title}`
-        });
+        if (isListicle) {
+          const html = await fetchPageContent(result.url);
+          results.pagesVisited++;
 
-        let html = result.htmlContent;
-        if (!html) {
-          html = await fetchPageContent(result.url);
-        }
+          try {
+            const { found } = await visitAndExtract(result.url, domain, query, results, run, options);
+            if (found > 0) continue;
+          } catch {
+            // continue to linked companies
+          }
 
-        const extractionResults = extractRecruitmentPhones(html, result.url, {
-          country: query.country,
-          recruitmentOnly,
-          carrierAware,
-          maxPhonesPerDomain: phones.perDomainCaps?.phones || 10,
-          maxWhatsAppPerDomain: phones.perDomainCaps?.whatsapp || 10
-        });
+          const saLinks = extractSaLinksFromHtml(html, result.url);
 
-        for (const phone of extractionResults.phones) {
-          if (isLikelyFakePhone(phone.e164, phone.local)) continue;
+          for (const link of saLinks) {
+            if (run.status === 'stopped') break;
+            let linkDomain;
+            try {
+              linkDomain = new URL(link).hostname;
+            } catch {
+              continue;
+            }
+            if (visitedDomains.has(linkDomain)) continue;
+            visitedDomains.add(linkDomain);
 
-          const pairKey = `${phone.e164}|${phone.companyName || domain}`;
-          if (!seenPairs.has(pairKey)) {
-            seenPairs.add(pairKey);
-            const item = { resultType: 'phone', ...phone, fetchedAt: new Date().toISOString() };
-            results.phones.push(item);
-            results.companies.add(phone.companyName || domain);
-            results.domains.add(domain);
-            sendResultEvent(run, item);
+            for (const url of expandDomainUrls(link)) {
+              if (run.status === 'stopped') break;
+              try {
+                const { found } = await visitAndExtract(url, linkDomain, query, results, run, options);
+                if (found > 0) break;
+                await new Promise(resolve => setTimeout(resolve, PAGE_DELAY_MS));
+              } catch (error) {
+                results.errors++;
+              }
+            }
+          }
+        } else {
+          for (const url of expandDomainUrls(result.url)) {
+            if (run.status === 'stopped') break;
+
+            try {
+              const { found } = await visitAndExtract(url, domain, query, results, run, options);
+              if (found > 0) break;
+              await new Promise(resolve => setTimeout(resolve, PAGE_DELAY_MS));
+            } catch (error) {
+              results.errors++;
+              logger.warn(`[RECRUITMENT-SEARCH] Error processing ${url}: ${error.message}`);
+            }
           }
         }
-
-        for (const wa of extractionResults.whatsapp) {
-          if (isLikelyFakePhone(wa.e164, wa.local)) continue;
-
-          const pairKey = `${wa.e164}|${wa.companyName || domain}`;
-          if (!seenPairs.has(pairKey)) {
-            seenPairs.add(pairKey);
-            const item = { resultType: 'whatsapp', ...wa, fetchedAt: new Date().toISOString() };
-            results.whatsapp.push(item);
-            results.companies.add(wa.companyName || domain);
-            results.domains.add(domain);
-            sendResultEvent(run, item);
-          }
-        }
-
-        results.pagesVisited++;
-
-        sendTraceEvent(run, {
-          scope: 'visit',
-          engine: query.engine,
-          country: query.country,
-          url: result.url,
-          status: 'completed',
-          durationMs: 0,
-          note: `Found ${extractionResults.phones.length} phones, ${extractionResults.whatsapp.length} WhatsApp`
-        });
-
-        await new Promise(resolve => setTimeout(resolve, PAGE_DELAY_MS));
       } catch (error) {
         results.errors++;
         backoffDomains.set(domain, Date.now() + BACKOFF_BASE_MS);
         logger.warn(`[RECRUITMENT-SEARCH] Error processing ${result.url}: ${error.message}`);
-
-        sendTraceEvent(run, {
-          scope: 'visit',
-          engine: query.engine,
-          country: query.country,
-          url: result.url,
-          status: 'error',
-          durationMs: 0,
-          note: error.message
-        });
       }
     }
   } catch (error) {
@@ -274,14 +410,30 @@ async function processQuery(query, results, run, options) {
 
 function buildRecruitmentQueries(keywords, country, maxPages) {
   const pages = Math.min(Math.max(maxPages || 3, 1), 5);
+  const unique = [...new Set(keywords.map(k => k.trim()).filter(Boolean))];
 
-  return keywords.map(keyword => ({
-    query: RECRUITMENT_QUERY_TEMPLATE(keyword, country),
-    country,
-    keyword,
-    maxPages: pages,
-    engine: 'ddg'
-  }));
+  const queries = [];
+  if (unique.length > 1) {
+    queries.push({
+      query: RECRUITMENT_QUERY_TEMPLATE(unique.slice(0, 4).join(' '), country),
+      country,
+      keyword: unique.join(', '),
+      maxPages: pages,
+      engine: 'bing'
+    });
+  }
+
+  for (const keyword of unique.slice(0, 3)) {
+    queries.push({
+      query: RECRUITMENT_QUERY_TEMPLATE(keyword, country),
+      country,
+      keyword,
+      maxPages: Math.min(pages, 2),
+      engine: 'bing'
+    });
+  }
+
+  return queries;
 }
 
 class Semaphore {
@@ -329,4 +481,10 @@ function sendTraceEvent(run, data) {
 
 function sendResultEvent(run, data) {
   if (run.res) {
-    run.r
+    run.res.write(`data: ${JSON.stringify({ type: 'result', ...data, timestamp: new Date().toISOString() })}\n\n`);
+  }
+}
+
+export async function getEngines() {
+  return ['ddg', 'bing'];
+}

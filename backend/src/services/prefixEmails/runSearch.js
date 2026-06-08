@@ -4,6 +4,7 @@ import { runMock } from './engines/mock.js';
 import { filterResults, extractEmails } from './filters.js';
 import { SiteExplorer } from './siteExplorer.js';
 import { extractFromHtml } from '../phones/extractFromHtml.js';
+import { shouldIncludeWhatsAppResult } from '../phones/whatsappVerify.js';
 import logger from '../../config/logger.js';
 
 // Performance constants
@@ -36,7 +37,8 @@ export async function runPrefixSearch({
   phoneTypes = ['mobile', 'landline', 'toll-free'],
   maxPhonesPerDomain = 5,
   maxWhatsAppPerDomain = 3,
-  strictPhoneMode = false
+  strictPhoneMode = false,
+  whatsappOnly = false
 }) {
   try {
     // Build search queries
@@ -45,7 +47,8 @@ export async function runPrefixSearch({
       keywords,
       countries,
       locations,
-      maxPages
+      maxPages,
+      whatsappOnly
     });
     
     if (dryRun) {
@@ -342,7 +345,7 @@ export async function runPrefixSearch({
               
               // Add phones to results if extracted
               if (extractPhones && (pagePhones.length > 0 || pageWhatsApp.length > 0)) {
-                for (const phone of pagePhones) {
+                if (!whatsappOnly) for (const phone of pagePhones) {
                   const domain = phone.sourceUrl ? new URL(phone.sourceUrl).hostname : '';
                   
                   // Check domain limit for phones
@@ -372,7 +375,6 @@ export async function runPrefixSearch({
                 for (const whatsapp of pageWhatsApp) {
                   const domain = whatsapp.sourceUrl ? new URL(whatsapp.sourceUrl).hostname : '';
                   
-                  // Check domain limit for WhatsApp
                   const domainWhatsAppCount = results.whatsapp.filter(w => 
                     w.sourceUrl && new URL(w.sourceUrl).hostname === domain
                   ).length;
@@ -380,20 +382,35 @@ export async function runPrefixSearch({
                     continue;
                   }
                   
-                  // Check for duplicates
                   const isDuplicate = results.whatsapp.some(w => 
                     w.e164 === whatsapp.e164 && w.sourceUrl === whatsapp.sourceUrl
                   );
-                  
-                  if (!isDuplicate) {
-                    results.whatsapp.push(whatsapp);
-                    
-                    // Send WhatsApp result event
-                    sendResultEvent(run, {
-                      resultType: 'whatsapp',
-                      ...whatsapp
+                  if (isDuplicate) continue;
+
+                  const { include, check } = await shouldIncludeWhatsAppResult(whatsapp.e164);
+                  if (!include) {
+                    logger.info(`[WHATSAPP-VERIFY] Rejected ${whatsapp.e164}: ${check.reason || 'not_on_whatsapp'}`);
+                    sendTraceEvent(run, {
+                      scope: 'whatsapp-verify',
+                      url: whatsapp.sourceUrl,
+                      status: 'rejected',
+                      note: `${whatsapp.e164} — ${check.exists === false ? 'not on WhatsApp' : 'unverified (no API)'}`
                     });
+                    continue;
                   }
+
+                  const verifiedItem = {
+                    ...whatsapp,
+                    whatsappVerified: check.verified && check.exists === true,
+                    verificationProvider: check.provider,
+                    waLink: whatsapp.waLink || `https://wa.me/${whatsapp.e164.replace(/\D/g, '')}`
+                  };
+
+                  results.whatsapp.push(verifiedItem);
+                  sendResultEvent(run, {
+                    resultType: 'whatsapp',
+                    ...verifiedItem
+                  });
                 }
               }
               

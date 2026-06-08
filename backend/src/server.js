@@ -24,6 +24,7 @@ import prefixEmailsRoutes from './routes/prefixEmails.js';
 import phonesExtractRoutes from './routes/phonesExtract.js';
 import recruitmentPhonesRoutes from './routes/recruitmentPhones.js';
 import domainEmailsRoutes from './routes/domainEmails.js';
+import whatsappVerifyRoutes from './routes/whatsappVerify.js';
 import testRoute from './routes/testRoute.js';
 
 // Import models for cleanup tasks
@@ -119,6 +120,7 @@ app.use('/api/prefix-emails', prefixEmailsRoutes);
 app.use('/api/phones-extract', phonesExtractRoutes);
 app.use('/api/recruitment-phones', recruitmentPhonesRoutes);
 app.use('/api/domain-emails', domainEmailsRoutes);
+app.use('/api/whatsapp-verify', whatsappVerifyRoutes);
 app.use('/api/test', testRoute);
 
 // Health endpoint

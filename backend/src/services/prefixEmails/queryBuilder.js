@@ -1,5 +1,5 @@
 // Query builder for prefix email searches
-export async function buildQueries({ prefixes, keywords, countries, locations = [], maxPages = 2 }) {
+export async function buildQueries({ prefixes, keywords, countries, locations = [], maxPages = 2, whatsappOnly = false }) {
   const queries = [];
   
   // Country synonyms mapping
@@ -55,7 +55,9 @@ export async function buildQueries({ prefixes, keywords, countries, locations = 
       const keywordGroup = keywords.map(keyword => `"${keyword}"`).join(' OR ');
       
       // Build context bias for email/contact pages
-      const contextBias = '"contact" OR "careers" OR "jobs" OR "recruitment" OR "التوظيف" OR "وظائف"';
+      const contextBias = whatsappOnly
+        ? '"whatsapp" OR "wa.me" OR "واتساب" OR "contact" OR "careers" OR "jobs"'
+        : '"contact" OR "careers" OR "jobs" OR "recruitment" OR "التوظيف" OR "وظائف"';
       
       // Build the main query
       let query = `(${prefixGroup}) (${countryGroup})`;

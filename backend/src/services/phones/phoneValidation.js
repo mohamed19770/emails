@@ -28,11 +28,36 @@ function nationalDigits(e164, local) {
   return d;
 }
 
+const COUNTRY_NATIONAL_LENGTH = {
+  SA: { min: 9, max: 9 },
+  AE: { min: 9, max: 9 },
+  QA: { min: 8, max: 8 },
+  KW: { min: 8, max: 8 },
+  BH: { min: 8, max: 8 },
+  OM: { min: 8, max: 8 }
+};
+
+export function isValidNationalLength(e164, countryCode = 'SA') {
+  const full = digitsOnly(e164);
+  const rules = COUNTRY_NATIONAL_LENGTH[countryCode];
+  if (!rules) return true;
+
+  const ccMap = { SA: '966', AE: '971', QA: '974', KW: '965', BH: '973', OM: '968' };
+  const cc = ccMap[countryCode];
+  if (!cc || !full.startsWith(cc)) return false;
+
+  const national = full.slice(cc.length);
+  return national.length >= rules.min && national.length <= rules.max;
+}
+
 export function isLikelyFakePhone(e164, local) {
   const full = digitsOnly(e164);
   const national = nationalDigits(e164, local);
 
   if (!national || national.length < 8) return true;
+
+  if (full.startsWith('966') && full.length !== 12) return true;
+  if (national.length > 10) return true;
 
   if (KNOWN_FAKE_NUMBERS.has(full) || KNOWN_FAKE_NUMBERS.has(national)) {
     return true;

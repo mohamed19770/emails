@@ -63,6 +63,9 @@ const WhatsAppFinder = () => {
   const [maxPhonesPerDomain, setMaxPhonesPerDomain] = useState(5);
   const [maxWhatsAppPerDomain, setMaxWhatsAppPerDomain] = useState(3);
   const [strictPhoneMode, setStrictPhoneMode] = useState(false);
+  const [whatsappOnly, setWhatsappOnly] = useState(true);
+  const [showRegularPhones, setShowRegularPhones] = useState(false);
+  const [verifyStatus, setVerifyStatus] = useState({ enabled: false, strict: true, provider: 'none' });
   
   // Basic search state
   const [keywords, setKeywords] = useState([]);
@@ -80,6 +83,13 @@ const WhatsAppFinder = () => {
   const [isPaused, setIsPaused] = useState(false);
   
   const eventSourceRef = useRef(null);
+
+  useEffect(() => {
+    fetch('/api/whatsapp-verify/status')
+      .then(r => r.json())
+      .then(data => setVerifyStatus(data))
+      .catch(() => setVerifyStatus({ enabled: false, strict: true, provider: 'none' }));
+  }, []);
   
   // Built-in countries
   const builtInCountries = [
@@ -137,7 +147,8 @@ const WhatsAppFinder = () => {
           phoneTypes,
           maxPhonesPerDomain,
           maxWhatsAppPerDomain,
-          strictPhoneMode
+          strictPhoneMode,
+          whatsappOnly
         })
       });
 
@@ -207,6 +218,9 @@ const WhatsAppFinder = () => {
               confidence: data.confidence,
               context: data.context,
               note: data.note,
+              hasWhatsAppLink: data.hasWhatsAppLink,
+              waLink: data.waLink,
+              whatsappVerified: data.whatsappVerified,
               fetchedAt: data.fetchedAt
             }]);
           }
@@ -268,7 +282,7 @@ const WhatsAppFinder = () => {
         <div className="page-header">
           <h1 className="page-title">📱 WhatsApp Finder</h1>
           <p className="page-description">
-            Find WhatsApp numbers and phone contacts from company websites
+            ابحث عن أرقام واتساب من مواقع الشركات — يعرض فقط الأرقام المرتبطة برابط wa.me أو مذكورة صراحة كواتساب
           </p>
         </div>
 
@@ -394,9 +408,16 @@ const WhatsAppFinder = () => {
                 <br/>Switch to <strong>DuckDuckGo</strong> for real search results from actual websites.
               </div>
             )}
-            {engines.includes('ddg') && (
+            {engines.includes('ddg') && !verifyStatus.enabled && (
+              <div className="warning-banner">
+                ⚠️ <strong>التحقق من واتساب غير مفعّل:</strong> لن تُعرض أي أرقام حتى تضيف API للتحقق.
+                <br/>أضف في <code>backend/.env</code>: WHATSAPP_VERIFY_PROVIDER=2chat و WHATSAPP_VERIFY_API_KEY
+                <br/>رابط wa.me على الموقع لا يعني أن الرقم مسجّل فعلاً على واتساب (كما في صورتك: +966520916465).
+              </div>
+            )}
+            {engines.includes('ddg') && verifyStatus.enabled && (
               <div className="success-banner">
-                ✅ <strong>Real Search Active:</strong> Using DuckDuckGo to find actual phone numbers and WhatsApp contacts from real company websites.
+                ✅ <strong>التحقق مفعّل ({verifyStatus.provider}):</strong> تُعرض فقط الأرقام المؤكدة على واتساب.
               </div>
             )}
           </div>
@@ -411,6 +432,28 @@ const WhatsAppFinder = () => {
             <p>Searching for WhatsApp numbers...</p>
           </div>
         )}
+
+        <div className="config-section glass">
+          <h3>⚙️ خيارات العرض</h3>
+          <label className="country-option">
+            <input
+              type="checkbox"
+              checked={whatsappOnly}
+              onChange={(e) => setWhatsappOnly(e.target.checked)}
+            />
+            <span>واتساب فقط — إخفاء أرقام الهاتف العادية</span>
+          </label>
+          {!whatsappOnly && (
+            <label className="country-option">
+              <input
+                type="checkbox"
+                checked={showRegularPhones}
+                onChange={(e) => setShowRegularPhones(e.target.checked)}
+              />
+              <span>إظهار أرقام الهاتف العادية (غير مؤكد واتساب)</span>
+            </label>
+          )}
+        </div>
 
         {/* Search Operation Panel - Moved to Bottom */}
         <div className="search-operation-panel glass">
@@ -500,72 +543,39 @@ const WhatsAppFinder = () => {
           </div>
         </div>
 
-        {/* Phone & WhatsApp Results */}
-        {(phones.length > 0 || whatsapp.length > 0) && (
+        {/* WhatsApp Results */}
+        {whatsapp.length > 0 && (
           <div className="results-panel glass">
-            <h3>📞 Found Numbers ({phones.length + whatsapp.length})</h3>
+            <h3>💬 أرقام واتساب ({whatsapp.length})</h3>
             
             <div className="results-table-container">
               <table className="results-table">
                 <thead>
                   <tr>
-                    <th>Type</th>
+                    <th>النوع</th>
                     <th>E.164</th>
-                    <th>Local</th>
-                    <th>Country</th>
-                    <th>Source URL</th>
-                    <th>Confidence</th>
-                    <th>Notes</th>
-                    <th>Fetched At</th>
-                    <th>Actions</th>
+                    <th>محلي</th>
+                    <th>الدولة</th>
+                    <th>المصدر</th>
+                    <th>الثقة</th>
+                    <th>ملاحظات</th>
+                    <th>التاريخ</th>
+                    <th>إجراءات</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {phones.map((phone, index) => (
-                    <tr key={`phone-${index}`}>
-                      <td>
-                        <span className="badge phone">{phone.type}</span>
-                      </td>
-                      <td>
-                        <code>{phone.e164}</code>
-                      </td>
-                      <td>
-                        <code>{phone.local}</code>
-                      </td>
-                      <td>{phone.country}</td>
-                      <td>
-                        <a href={phone.sourceUrl} target="_blank" rel="noopener noreferrer">
-                          {phone.sourceUrl}
-                        </a>
-                      </td>
-                      <td>
-                        <span className={`confidence ${phone.confidence}`}>
-                          {phone.confidence}
-                        </span>
-                      </td>
-                      <td>{phone.note || phone.source}</td>
-                      <td>{new Date(phone.fetchedAt).toLocaleString()}</td>
-                      <td>
-                        <button 
-                          onClick={() => navigator.clipboard.writeText(phone.e164)}
-                          className="btn-glass"
-                        >
-                          Copy E.164
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                  {whatsapp.map((wa, index) => (
+                  {whatsapp.map((wa, index) => {
+                    const waDigits = wa.e164?.replace(/\D/g, '') || '';
+                    const waUrl = wa.waLink || `https://wa.me/${waDigits}`;
+                    return (
                     <tr key={`whatsapp-${index}`}>
                       <td>
-                        <span className="badge whatsapp">WhatsApp</span>
+                        <span className="badge whatsapp">
+                          {wa.whatsappVerified ? '✓ مؤكد' : wa.hasWhatsAppLink ? 'رابط wa.me' : 'نص واتساب'}
+                        </span>
                       </td>
-                      <td>
-                        <code>{wa.e164}</code>
-                      </td>
-                      <td>
-                        <code>{wa.local}</code>
-                      </td>
+                      <td><code>{wa.e164}</code></td>
+                      <td><code>{wa.local}</code></td>
                       <td>{wa.country}</td>
                       <td>
                         <a href={wa.sourceUrl} target="_blank" rel="noopener noreferrer">
@@ -580,36 +590,43 @@ const WhatsAppFinder = () => {
                       <td>{wa.note || wa.source}</td>
                       <td>{new Date(wa.fetchedAt).toLocaleString()}</td>
                       <td>
+                        <a
+                          href={waUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn-glass"
+                          style={{ marginRight: '0.5rem', textDecoration: 'none', display: 'inline-block' }}
+                        >
+                          فتح واتساب
+                        </a>
                         <button 
                           onClick={() => navigator.clipboard.writeText(wa.e164)}
                           className="btn-glass"
                         >
-                          Copy E.164
+                          نسخ
                         </button>
                       </td>
                     </tr>
-                  ))}
+                  );})}
                 </tbody>
               </table>
             </div>
             
-            {/* Bulk Actions */}
             <div className="bulk-actions">
               <button 
                 onClick={() => {
-                  const allE164 = [...phones, ...whatsapp].map(p => p.e164).join('\n');
+                  const allE164 = whatsapp.map(p => p.e164).join('\n');
                   navigator.clipboard.writeText(allE164);
-                  alert('All E.164 numbers copied to clipboard!');
+                  alert('تم نسخ أرقام واتساب!');
                 }}
                 className="btn-glass"
               >
-                Copy All E.164
+                نسخ كل أرقام واتساب
               </button>
               <button 
                 onClick={() => {
                   const csvData = [
                     'Type,E.164,Local,Country,Source URL,Confidence,Notes,Fetched At',
-                    ...phones.map(p => `Phone,${p.e164},${p.local},${p.country},${p.sourceUrl},${p.confidence},"${p.note || p.source}",${p.fetchedAt}`),
                     ...whatsapp.map(w => `WhatsApp,${w.e164},${w.local},${w.country},${w.sourceUrl},${w.confidence},"${w.note || w.source}",${w.fetchedAt}`)
                   ].join('\n');
                   
@@ -626,6 +643,71 @@ const WhatsAppFinder = () => {
                 Export CSV
               </button>
             </div>
+          </div>
+        )}
+
+        {!whatsappOnly && showRegularPhones && phones.length > 0 && (
+          <div className="results-panel glass">
+            <h3>📞 أرقام هاتف عادية — غير مؤكد واتساب ({phones.length})</h3>
+            <p style={{ opacity: 0.8, marginBottom: '1rem' }}>
+              هذه الأرقام من روابط tel: أو نص الصفحة وقد لا تكون مسجلة على واتساب
+            </p>
+            <div className="results-table-container">
+              <table className="results-table">
+                <thead>
+                  <tr>
+                    <th>النوع</th>
+                    <th>E.164</th>
+                    <th>محلي</th>
+                    <th>المصدر</th>
+                    <th>ملاحظات</th>
+                    <th>إجراءات</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {phones.map((phone, index) => (
+                    <tr key={`phone-${index}`}>
+                      <td><span className="badge phone">{phone.type}</span></td>
+                      <td><code>{phone.e164}</code></td>
+                      <td><code>{phone.local}</code></td>
+                      <td>
+                        <a href={phone.sourceUrl} target="_blank" rel="noopener noreferrer">
+                          {phone.sourceUrl}
+                        </a>
+                      </td>
+                      <td>{phone.note || phone.source}</td>
+                      <td>
+                        <a
+                          href={`https://wa.me/${phone.e164?.replace(/\D/g, '')}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn-glass"
+                          style={{ textDecoration: 'none', display: 'inline-block' }}
+                        >
+                          تجربة واتساب
+                        </a>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {!loading && whatsapp.length === 0 && runId && (
+          <div className="config-section glass" style={{ textAlign: 'center', padding: '2rem' }}>
+            {!verifyStatus.enabled ? (
+              <>
+                <p><strong>لا توجد أرقام واتساب مؤكدة.</strong></p>
+                <p>فعّل التحقق عبر API (2Chat أو Wawp) في backend/.env ثم أعد البحث.</p>
+                <p style={{ opacity: 0.7, fontSize: '0.9rem' }}>
+                  بدون API، الأرقام المستخرجة من المواقع قد لا تكون مسجلة على واتساب.
+                </p>
+              </>
+            ) : (
+              <p>لم يُعثر على أرقام واتساب مؤكدة. جرّب كلمات: whatsapp، واتساب، careers، وظائف</p>
+            )}
           </div>
         )}
       </div>

@@ -8,7 +8,7 @@ import { extractFromHtml } from './extractFromHtml.js';
 import { validateCarrierPrefix, getCarrierName, countryNameToCode } from './carrierPrefixes.js';
 import { isRecruitmentPage } from '../recruitment/intent.js';
 import { extractCompanyName } from '../extract/companyName.js';
-import { isLikelyFakePhone } from './phoneValidation.js';
+import { isLikelyFakePhone, isValidNationalLength } from './phoneValidation.js';
 import logger from '../../config/logger.js';
 
 /**
@@ -84,9 +84,21 @@ export function extractRecruitmentPhones(html, url, options = {}) {
       return local || digits;
     };
     
+    const matchesSelectedCountry = (phone) => {
+      if (!countryCode) return true;
+      const digits = String(phone.e164 || '').replace(/\D/g, '');
+      const callingCodeMap = { SA: '966', AE: '971', QA: '974', KW: '965', BH: '973', OM: '968', EG: '20', JO: '962', LB: '961' };
+      const cc = callingCodeMap[countryCode];
+      return cc ? digits.startsWith(cc) : true;
+    };
+
     // Process and validate phone numbers
     for (const phone of phoneResults.phones) {
-      if (isLikelyFakePhone(phone.e164, phone.local)) {
+      if (!matchesSelectedCountry(phone)) {
+        continue;
+      }
+
+      if (isLikelyFakePhone(phone.e164, phone.local) || !isValidNationalLength(phone.e164, countryCode)) {
         trace.push({
           scope: 'fake-filter',
           url,
@@ -132,7 +144,11 @@ export function extractRecruitmentPhones(html, url, options = {}) {
     
     // Process WhatsApp numbers
     for (const wa of phoneResults.whatsapp) {
-      if (isLikelyFakePhone(wa.e164, wa.local)) {
+      if (!matchesSelectedCountry(wa)) {
+        continue;
+      }
+
+      if (isLikelyFakePhone(wa.e164, wa.local) || !isValidNationalLength(wa.e164, countryCode)) {
         continue;
       }
 

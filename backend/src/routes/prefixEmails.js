@@ -16,7 +16,8 @@ router.post('/run', async (req, res) => {
     phoneTypes = ['mobile', 'landline', 'toll-free'],
     maxPhonesPerDomain = 5,
     maxWhatsAppPerDomain = 3,
-    strictPhoneMode = false
+    strictPhoneMode = false,
+    whatsappOnly = false
   } = req.body;
   const dryRun = req.query.dry === '1';
   
@@ -78,7 +79,8 @@ router.post('/run', async (req, res) => {
         phoneTypes,
         maxPhonesPerDomain,
         maxWhatsAppPerDomain,
-        strictPhoneMode
+        strictPhoneMode,
+        whatsappOnly
       });
       
       return res.json({
@@ -98,6 +100,7 @@ router.post('/run', async (req, res) => {
       maxPhonesPerDomain,
       maxWhatsAppPerDomain,
       strictPhoneMode,
+      whatsappOnly,
       startTime: Date.now(),
       config: {
         prefixes,
@@ -140,6 +143,7 @@ router.post('/run', async (req, res) => {
       maxPhonesPerDomain,
       maxWhatsAppPerDomain,
       strictPhoneMode,
+      whatsappOnly,
       activeRuns
     }).catch(error => {
       logger.error(`[PREFIX-EMAILS] Run ${runId} failed:`, error);
